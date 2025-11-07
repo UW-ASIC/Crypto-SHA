@@ -5,6 +5,7 @@ from cocotb.types import Range
 from cocotb.types import LogicArray
 
 from gen_test_cases import generate_test_cases
+from gen_test_cases import NUM_TEST_CASES
 
 def to_int(list):
     for i in range(len(list)):
@@ -69,9 +70,7 @@ async def test_msg_schedule(dut):
 
     await reset_msg_schedule(dut)
 
-    num_test_cases = 10
-
-    for i in range(num_test_cases):
+    for i in range(NUM_TEST_CASES):
         with open(f"test_cases/test_case_{i + 1}.json", 'r') as file:
             test_case = json.load(file)
         

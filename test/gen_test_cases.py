@@ -1,5 +1,7 @@
 import os, json, random
 
+NUM_TEST_CASES = 10
+
 def rotr(x, n):
     return (x >> n) | (x << (32 - n))
 
@@ -33,8 +35,7 @@ def compute_message_schedule(block):
 def generate_test_cases():
     os.makedirs("test_cases", exist_ok = True)
 
-    num_test_cases = 10
-    for i in range(num_test_cases):
+    for i in range(NUM_TEST_CASES):
         block = [random.getrandbits(32) for i in range(16)] # 512-bit input message
 
         with open(f"test_cases/test_case_{i+1}.json","w") as file:
