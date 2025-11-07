@@ -17,9 +17,14 @@ module message_schedule(
 reg [31:0] W_window [15:0]; // 16*32 bit register sliding window
 reg [31:0] W_window_new [15:0]; // To update values when window slides
 
+reg [5:0] first_entry_idx; // Keep track of where window begins
+
 // Driven high to update W_window with W_window_new after 
 // W_window_new has been assigned appropriate values
 reg W_window_write_enable; 
+
+// To increment in loops
+integer i;
 
 //---------------Calculate/Slide W_window_new---------------//
 
@@ -43,28 +48,37 @@ sha256_funcs sha256_funcs_inst(
     .Sigma1()
 );
 
+// To store index of actual window since directly
+// indexing `t` would be beyond window size (16) at some point
+reg [5:0] window_idx;
+
 // Combinational logic
 always @(*) begin
 
-    if (init && (t < 16)) begin
+    window_idx = t - first_entry_idx;
+    W_t = W_window[ window_idx[3:0] ];
+
+
+    // Because the change is applied during the
+    // next clock cycle, we need to check `t + 1`
+    if (init && (t + 1 < 16)) begin
 
         for (i = 0; i < 16; i = i + 1) begin
-            W_window_new[i] = block[32*i +: 32];
-        end 
+            W_window_new[i] = block[(511 - 32*i) -: 32];
+        end
 
-        W_t = W_window[ t[3:0] ];
         W_window_write_enable = 1;
 
-    end else if (shift && (t >= 16)) begin
+    end else if (shift && (t + 1 >= 16)) begin
 
         // Slide window towards MSB
         for (i = 0; i < 15; i = i + 1) begin
             W_window_new[i] = W_window[i + 1];
         end
 
-        W_t = s0 + W_window[9] + s1 + W_window[0];
-
-        W_window_new[15] = W_t;
+        // Unlike in test/gen_test_cases.py, no need to AND
+        // with 0xffffffff because W_t is only 32 bits long
+        W_window_new[15] = s0 + W_window[9] + s1 + W_window[0];
 
         W_window_write_enable = 1;
 
@@ -76,8 +90,6 @@ always @(*) begin
             W_window_new[i] = 32'b0;
         end 
 
-        W_t = W_window[ t[3:0] ];
-
         W_window_write_enable = 0;
 
     end
@@ -85,10 +97,9 @@ end
 
 //-------------Update W_window with W_window_new--------------//
 
-integer i;
-
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
+        first_entry_idx <= 0;
 
         valid <= 0;
 
@@ -104,6 +115,12 @@ always @(posedge clk or negedge rst_n) begin
             W_window[i] <= W_window_new[i];
         end
 
+        if ( t >= 16 ) begin
+            first_entry_idx <= first_entry_idx + 1;
+        end else if (t == 0) begin
+            first_entry_idx <= 6'b0;
+        end
+        
         valid <= 1;
 
     end else begin
