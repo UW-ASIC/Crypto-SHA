@@ -84,6 +84,4 @@ module round_constants(
         K_CONSTANTS[63]  = 32'hc67178f2;
     end
 
-
-
 endmodule
