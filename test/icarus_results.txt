@@ -1,0 +1,55 @@
+Tested against: https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/SHA256.pdf
+
+                                                        Test round
+     0.00ns INFO     cocotb.round                       === Starting SHARounds test ===
+     0.00ns INFO     cocotb.round                       Applying reset
+FST info: dumpfile sim_build/rtl/round.fst opened for output.
+ 10000.00ns INFO     cocotb.round                       Reset released
+ 40000.00ns INFO     cocotb.round                       A=5d6aebcd B=6a09e667 C=bb67ae85 D=3c6ef372
+ 40000.00ns INFO     cocotb.round                       E=fa2a4622 F=510e527f G=9b05688c H=1f83d9ab
+ 40000.00ns INFO     cocotb.round                       ✓ t=0 PASSED
+ 40000.00ns INFO     cocotb.round                       Applying reset
+ 50000.00ns INFO     cocotb.round                       Reset released
+ 80000.00ns INFO     cocotb.round                       A=5a6ad9ad B=5d6aebcd C=6a09e667 D=bb67ae85
+ 80000.00ns INFO     cocotb.round                       E=78ce7989 F=fa2a4622 G=510e527f H=9b05688c
+ 80000.00ns INFO     cocotb.round                       ✓ t=1 PASSED
+ 80000.00ns INFO     cocotb.round                       Applying reset
+ 90000.00ns INFO     cocotb.round                       Reset released
+120000.00ns INFO     cocotb.round                       A=c8c347a7 B=5a6ad9ad C=5d6aebcd D=6a09e667
+120000.00ns INFO     cocotb.round                       E=f92939eb F=78ce7989 G=fa2a4622 H=510e527f
+120000.00ns INFO     cocotb.round                       ✓ t=2 PASSED
+120000.00ns INFO     cocotb.round                       Applying reset
+130000.00ns INFO     cocotb.round                       Reset released
+160000.00ns INFO     cocotb.round                       A=d550f666 B=c8c347a7 C=5a6ad9ad D=5d6aebcd
+160000.00ns INFO     cocotb.round                       E=24e00850 F=f92939eb G=78ce7989 H=fa2a4622
+160000.00ns INFO     cocotb.round                       ✓ t=3 PASSED
+160000.00ns INFO     cocotb.round                       Applying reset
+170000.00ns INFO     cocotb.round                       Reset released
+200000.00ns INFO     cocotb.round                       A=04409a6a B=d550f666 C=c8c347a7 D=5a6ad9ad
+200000.00ns INFO     cocotb.round                       E=43ada245 F=24e00850 G=f92939eb H=78ce7989
+200000.00ns INFO     cocotb.round                       ✓ t=4 PASSED
+200000.00ns INFO     cocotb.round                       Applying reset
+210000.00ns INFO     cocotb.round                       Reset released
+240000.00ns INFO     cocotb.round                       A=2b4209f5 B=04409a6a C=d550f666 D=c8c347a7
+240000.00ns INFO     cocotb.round                       E=714260ad F=43ada245 G=24e00850 H=f92939eb
+240000.00ns INFO     cocotb.round                       ✓ t=5 PASSED
+240000.00ns INFO     cocotb.round                       Applying reset
+250000.00ns INFO     cocotb.round                       Reset released
+280000.00ns INFO     cocotb.round                       A=e5030380 B=2b4209f5 C=04409a6a D=d550f666
+280000.00ns INFO     cocotb.round                       E=9b27a401 F=714260ad G=43ada245 H=24e00850
+280000.00ns INFO     cocotb.round                       ✓ t=6 PASSED
+280000.00ns INFO     cocotb.round                       Applying reset
+290000.00ns INFO     cocotb.round                       Reset released
+320000.00ns INFO     cocotb.round                       A=85a07b5f B=e5030380 C=2b4209f5 D=04409a6a
+320000.00ns INFO     cocotb.round                       E=0c657a79 F=9b27a401 G=714260ad H=43ada245
+320000.00ns INFO     cocotb.round                       ✓ t=7 PASSED
+320000.00ns INFO     cocotb.round                       Applying reset
+330000.00ns INFO     cocotb.round                       Reset released
+330000.00ns INFO     cocotb.regression                  test.test_sharounds passed
+330000.00ns INFO     cocotb.regression                  **************************************************************************************
+                                                        ** TEST                          STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **
+                                                        **************************************************************************************
+                                                        ** test.test_sharounds            PASS      330000.00           0.02   18184593.31  **
+                                                        **************************************************************************************
+                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0             330000.00           0.02   17222710.10  **
+                                                        **************************************************************************************
