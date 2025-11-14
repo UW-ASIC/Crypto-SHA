@@ -14,7 +14,7 @@ module padder(
   output reg  [511:0] blk_data,
 
   // Optional: message length out (debug)
-  output reg  [63:0]  bitlen
+  //output reg  [63:0]  bitlen
 );
 
     reg [63:0] msgidx; // used for indexing blk_q after initial msg length is determined
