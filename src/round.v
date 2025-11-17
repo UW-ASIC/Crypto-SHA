@@ -13,8 +13,6 @@ module round(
   input  wire         out_ready
 );
 
-// note: this version of the file has not been tested
-// do not integrate with top level yet
 
 reg [31:0] T1, T2;
 
