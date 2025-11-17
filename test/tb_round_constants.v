@@ -14,7 +14,7 @@ module tb_round_constants ();
   end
 
   // Wire up the inputs and outputs:
-  wire [6:0] idx;
+  wire [5:0] idx;
   wire [31:0] K_t;
   wire [255:0] IV;    
 

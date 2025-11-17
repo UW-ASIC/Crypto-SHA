@@ -1,6 +1,6 @@
 module round_constants(
     input  wire [5:0]  idx,     // 0..63
-    output reg [31:0] K_t,     // round constant
+    output reg [31:0] K_t,      // round constant
     output wire [255:0] IV      // {H0,H1,...,H7}, big-endian word order
 );
 
