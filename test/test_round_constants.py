@@ -2,6 +2,7 @@ import cocotb
 from cocotb.triggers import Timer
 import random
 
+# ---------- Initial constant values ---------- #
 K_CONSTANTS = ["428a2f98", "71374491", "b5c0fbcf", "e9b5dba5", "3956c25b", "59f111f1", "923f82a4", "ab1c5ed5",
                "d807aa98", "12835b01", "243185be", "550c7dc3", "72be5d74", "80deb1fe", "9bdc06a7", "c19bf174",
                "e49b69c1", "efbe4786", "0fc19dc6", "240ca1cc", "2de92c6f", "4a7484aa", "5cb0a9dc", "76f988da",
@@ -13,19 +14,19 @@ K_CONSTANTS = ["428a2f98", "71374491", "b5c0fbcf", "e9b5dba5", "3956c25b", "59f1
 
 IV = ["6a09e667", "bb67ae85", "3c6ef372", "a54ff53a", "510e527f", "9b05688c", "1f83d9ab", "5be0cd19"]
 
+K_CONSTANTS_INT = [int(k, 16) for k in K_CONSTANTS]
+IV_INT = [int(i, 16) for i in IV]
+
+# ---------- Test K_t Constant ---------- #
 @cocotb.test()
 async def round_constants(dut):
-    dut._log.info("Starting test for Round Constants")
-
-    idx = 0
+    dut._log.info("Starting test for K_t constants")
 
     dut.idx.value = 0
-    await Timer(10, unit='ns')
+    await Timer(1, unit='ns')
 
-    dut.idx.value = 1
-    await Timer(10, unit='ns')
+    for idx in range(64):
+        dut.idx.value = idx
+        await Timer(1, unit='ns')
 
-    dut.idx.value = 2
-    await Timer(10, unit='ns')
-
-    dut._log.info("The K value we get is:", dut.K_t.value)
+        assert dut.K_t.value == K_CONSTANTS_INT[idx], f"Expected K_t = {K_CONSTANTS_INT[idx]}"
