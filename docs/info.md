@@ -23,6 +23,11 @@ List external hardware used in your project (e.g. PMOD, LED display, etc), if an
 
 ### How the SHA-256 standard defines the process
 
+SHA-256 requries 64 rounds of bitwise math on eight 32-bit registers. 
+
+Two of the temporary values are calculated using rotations and bitwise operations defined as a part of the 6 main functions in SHA-256, as well as adding the unique SHA constant and schedule word.
+
+The registers are then shifted by 1 from b to h, except the output of e, which adds d input to h, some of the functions, and the SHA constant and schedule word.
 
 
 ### Implementation
