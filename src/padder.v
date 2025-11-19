@@ -14,77 +14,90 @@ module padder(
   output reg  [511:0] blk_data,
 
   // Optional: message length out (debug)
-  //output reg  [63:0]  bitlen
+  output reg  [63:0]  bitlen
 );
 
-    reg [63:0] msgidx; // used for indexing blk_q after initial msg length is determined
     reg [63:0] msglen; // length of input data
-    reg [1023:0] blk_q; // stores up to 2 blocks after padding
+    reg [951:0] msg_q; // stores msg (up to 952 bits since maximum amount of blocks module produces is 2)
+    reg [1023:0] padded; // stores final padded message
     reg inter_ready; // intermediate signal to allow comb. logic with in_ready
+    reg double_blk;
+    integer i;
 
     assign in_ready = inter_ready;
-
-    reg [3:0] current_state, next_state;
-    localparam IDLE = 3'b000, 
-               MSG = 3'b001, // receive data bytes
-               PAD_0x80 = 3'b010, // pads first 0x80 byte
-               PAD_ZEROS = 3'b011, // pads 0x00 until 64 bits remain in block
-               BLK_DOUBLE = 3'b100, // shifts in first out of two blocks
-               BLK_SINGLE = 3'b101; // shifts in last block out of 2 blocks OR shifts in single block
-
     assign bitlen = msglen;
 
     always @ (posedge clk or negedge rst_n) begin
 
         if (!rst_n) begin
 
-            blk_q <= 1024'b0;
-            msgidx <= 64'b0;
+            inter_ready <= 1;
+            blk_valid <= 0;
+            blk_data <= 512'b0;
+            msg_q <= 1024'b0;
             msglen <= 64'b0;
-            current_state <= IDLE;
+            double_blk <= 0;
 
         end
         
         else begin
 
-            current_state <= next_state;
+            if (!in_valid && inter_ready) begin // for empty messages
 
-            if (current_state == IDLE) begin
+                if (in_last) begin
 
-                blk_q <= 1024'b0;
-                msgidx <= 64'b0;
-                msglen <= 64'b0;
+                    inter_ready <= 0;
+                    blk_valid <= 1;
+                    blk_data <= 1<<511;
+
+                end
+
+            end
+
+            else begin
+
+                if (msglen == 0) begin
+                    
+                    blk_valid <= 0;
+                    inter_ready <= 1;
+
+                end
+
+                if (in_valid && inter_ready) begin
+
+                    if (in_last) inter_ready <= 0;
+                    else msglen <= msglen + 8;
                 
-            end
+                    msg_q <= {msg_q[943:0], in_data}; 
 
-
-            if (current_state == MSG) begin
-                
-                if (in_valid) begin // for non empty messages
-                    blk_q <= {blk_q[1015:0], in_data};
-                    msgidx <= msgidx+8;
                 end
 
+                else if (blk_ready) begin
 
-            end
+                    if (msglen != 0) begin
 
-            else if (current_state == PAD_0x80) begin
+                        blk_valid <= 1;
 
-                msglen <= msgidx;
-                blk_q <= {blk_q[1015:0], 8'h80};
-                msgidx <= msgidx+8;
+                        if (!double_blk) begin
+                            
+                            blk_data <= padded[1023:512];
+                            if (msglen >= 448) double_blk <= 1;
+                            else msglen <= 0;
 
-            end
+                        end
 
-            else if (current_state == PAD_ZEROS) begin
+                        else begin
+                            
+                            blk_data <= padded[511:0];
+                            msglen <= 0;
+                            double_blk <= 0;
 
-                if (msgidx%512 == 448) begin
-                    blk_q <= {blk_q[959:0], msglen[63:0]};
+                        end
+
+                    end
+
                 end
-                else begin
-                    blk_q <= {blk_q[1015:0], 8'h00};
-                    msgidx <= msgidx+8;
-                end
+
 
             end
 
@@ -92,124 +105,23 @@ module padder(
 
     end
 
-    // STATE TRANSITION LOGIC
-
     always @ (*) begin
 
-        case (current_state) 
+        padded = 1024'd0;  
 
-            IDLE: begin
-                
-                if (!in_valid) begin
-                    if (in_last) next_state = BLK_SINGLE; // for empty messages
-                    else next_state = IDLE;
-                end
-                else next_state = MSG;
+        // Copy message bytes
+        for(i = 0; i < msglen/8; i = i + 1)
+            padded[1023 - 8*i -: 8] = msg_q[msglen-1 - 8*i -: 8];
 
-            end
+        // Append the 0x80 bit
+        padded[1023 - msglen -: 8] = 8'h80;
 
-            MSG: begin
-
-                if (in_valid) begin
-                
-                    if (!in_last) next_state = MSG;
-                    else next_state = PAD_0x80;
-
-                end
-
-                else next_state = IDLE;
-
-
-            end
-
-            PAD_0x80: begin
-
-                next_state = PAD_ZEROS;
-
-            end
-
-            PAD_ZEROS: begin
-
-                if (msgidx%512 == 448) begin
-                    if (msgidx == 448) next_state = BLK_SINGLE;
-                    else next_state = BLK_DOUBLE;
-                end
-                else next_state = PAD_ZEROS;
-
-            end
-
-            BLK_DOUBLE: begin
-
-                if (!blk_ready) next_state = BLK_DOUBLE;
-                else next_state = BLK_SINGLE;
-
-            end
-
-            BLK_SINGLE: begin
-
-                if (!blk_ready) next_state = BLK_SINGLE;
-                else next_state = IDLE;
-
-            end
-
-        endcase
+        // Append 64-bit message length
+        if (msglen <= 440) padded[575:512] = msglen;
+        else padded[63:0] = msglen;
 
     end
 
-    // OUTPUT LOGIC
 
-    always @ (*) begin
-
-        case (current_state) 
-
-            IDLE: begin
-
-                inter_ready = 1;
-                blk_valid = 0;
-                blk_data = 0;
-
-            end
-
-            MSG: begin
-
-                if (in_last) inter_ready = 0;
-            
-            end
-
-            BLK_DOUBLE: begin
-
-                blk_valid = 1;
-
-                if (blk_ready) blk_data = blk_q[1023:512];
-                    
-            end
-
-            BLK_SINGLE: begin
-
-                blk_valid = 1;
-
-                if (blk_ready) begin
-
-                    if (!in_valid && in_last) blk_data = 1<<511;
-
-                    else begin
-                
-                        if (msgidx > 512) begin
-                            if (blk_q[511:0] == 512'b0) blk_valid = 0;
-                            else blk_data = blk_q[511:0];
-                        end
-                        else blk_data = blk_q[511:0];
-
-                    end
-
-                end
-            
-            end
-
-
-
-        endcase
-
-    end
 
 endmodule
