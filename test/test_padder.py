@@ -15,6 +15,7 @@ async def send_message(dut, msg): # msg is a binary string
     data = [] # data[0] is blk1 data, data[1] is blk2 data (if it exists)
     dut.in_last.value = 0
     dut.in_valid.value = 0
+    dut.blk_ready.value = 0
     msg_size = int(len(msg)/8)
 
     # await for in_ready before transmitting data
@@ -118,7 +119,7 @@ async def test_padder(dut):
     assert int(data[0]) == reference_padder(msg)[0], print(f"Expected (1 << 511), got {int(data[0])}")
     
     dut._log.info("440 bit length integer message")
-    msg = "1"*440
+    msg = "1011"*55 + "11"*110
     data = await send_message(dut, msg)
     assert int(data[0]) == reference_padder(msg)[0], print(f"Expected (441 1s, 7 0s, and 64 bit rep of 440), got {int(data[0])}")
     
@@ -127,7 +128,7 @@ async def test_padder(dut):
     data = await send_message(dut, msg)
     assert int(data[0]) == reference_padder(msg)[0], print(f"Expected (449 1s, 63 0s), got {int(data[0])}")
     assert int(data[1]) == reference_padder(msg)[1], print(f"Expected (448 0s, 64 bit rep of 448), got {int[data[1]]}")
-
+    
     dut._log.info("512 bit length integer message")
     msg = "1"*512
     data = await send_message(dut, msg)
@@ -148,6 +149,7 @@ async def test_padder(dut):
     dut._log.info("Randomized Tests")
 
     for i in range(20):
+        #print(data)
         msg = randomize_message(440)
         data = await send_message(dut, msg)
         assert int(data[0]) == reference_padder(msg)[0], print(f"Expected {reference_padder(msg)[0]}, got {int(data[0])}")
@@ -181,5 +183,5 @@ async def test_padder(dut):
         assert int(data[0]) == reference_padder(msg)[0], print(f"Expected {reference_padder(msg)[0]}, got {int(data[0])}")
         if len(data) == 2:
             assert int(data[1]) == reference_padder(msg)[1], print(f"Expected {reference_padder(msg)[1]}, got {int(data[1])}")
-   
+    
     dut._log.info("Tests finished!")
