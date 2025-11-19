@@ -84,8 +84,8 @@ def randomize_message(length = 0):
     
 
 @cocotb.test()
-async def test_padder(dut):
-    dut._log.info("Starting test for padder") # Log the start of the test
+async def test_padder_edge_cases(dut):
+    dut._log.info("Starting edge case tests for padder") # Log the start of the test
     
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())  # Start the clock
@@ -146,10 +146,28 @@ async def test_padder(dut):
     data = await send_message(dut, msg)
     assert int(data[0]) == reference_padder(msg)[0], print(f"Expected (1 << 511), got {int(data[0])}")
 
+    dut._log.info("Edge case tests finished!")
+
+@cocotb.test()
+async def test_padder_random(dut):
+
+    dut._log.info("Starting edge case tests for padder") # Log the start of the test
+    
+    clock = Clock(dut.clk, 10, units="ns")
+    cocotb.start_soon(clock.start())  # Start the clock
+    
+    dut.rst_n.value = 0
+    dut.in_last.value = 0
+    dut.in_valid.value = 0
+    dut.in_data.value = 0
+    dut.in_last.value = 0
+    dut.blk_ready.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+
     dut._log.info("Randomized Tests")
 
     for i in range(20):
-        #print(data)
         msg = randomize_message(440)
         data = await send_message(dut, msg)
         assert int(data[0]) == reference_padder(msg)[0], print(f"Expected {reference_padder(msg)[0]}, got {int(data[0])}")
@@ -184,4 +202,4 @@ async def test_padder(dut):
         if len(data) == 2:
             assert int(data[1]) == reference_padder(msg)[1], print(f"Expected {reference_padder(msg)[1]}, got {int(data[1])}")
     
-    dut._log.info("Tests finished!")
+    dut._log.info("Randomized tests finished!")
