@@ -151,7 +151,7 @@ async def test_padder_edge_cases(dut):
 @cocotb.test()
 async def test_padder_random(dut):
 
-    dut._log.info("Starting edge case tests for padder") # Log the start of the test
+    dut._log.info("Starting random tests for padder") # Log the start of the test
     
     clock = Clock(dut.clk, 10, units="ns")
     cocotb.start_soon(clock.start())  # Start the clock
