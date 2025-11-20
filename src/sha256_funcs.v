@@ -1,3 +1,7 @@
+/*
+    THIS FILE IS A COPY FROM THE SHA256_FUNCS BRANCH.
+*/
+
 module sha256_funcs(
   input  wire [31:0] x, y, z,
   output wire [31:0] Ch,      // (x & y) ^ (~x & z)
