@@ -1,6 +1,6 @@
 module round_constants(
     input  wire [5:0]  idx,     // 0..63
-    output reg [31:0] K_t,      // round constant
+    output reg [31:0] K_t      // round constant
 );
     always @(*) begin
         case (idx)

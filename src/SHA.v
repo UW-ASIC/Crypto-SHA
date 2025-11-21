@@ -82,7 +82,7 @@ module sha (
 
     round_constants rc (
         .idx (t),
-        .K_t (K_t),
+        .K_t (K_t)
     );
 
     // Message schedule: takes the 8 words directly (no 512-bit block)

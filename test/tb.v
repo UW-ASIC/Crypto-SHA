@@ -14,36 +14,68 @@ module tb ();
   end
 
   // Wire up the inputs and outputs:
+
+    //   input wire clk,
+    // input wire rst_n,
+
+    // // DATA BUS
+    // input  wire [7:0] data_in,
+    // output wire       ready_in,
+    // input  wire       valid_in,
+    // output wire [7:0] data_out,
+    // input  wire       data_ready,
+    // output wire       data_valid,
+
+    // // ACK BUS
+    // input  wire       ack_ready,
+    // output wire       ack_valid,
+    // output wire [1:0] module_source_id,
+
+    // // TRANSACTION BUS
+    // input  wire [1:0]  opcode,
+    // input  wire [1:0]  source_id,
+    // input  wire [1:0]  dest_id,
+    // input  wire        encdec,      // unused for SHA
+    // input  wire [23:0] addr         // unused
   reg clk;
   reg rst_n;
-  reg ena;
-  reg [7:0] ui_in;
-  reg [7:0] uio_in;
-  wire [7:0] uo_out;
-  wire [7:0] uio_out;
-  wire [7:0] uio_oe;
+  reg [7:0] data_in;
+  wire       ready_in;
+  reg       valid_in;
+  wire [7:0] data_out;
+  reg       data_ready;
+  wire       data_valid;
+  reg       ack_ready;
+  wire       ack_valid;
+  wire [1:0] module_source_id;
+  reg [1:0]  opcode;
+  reg [1:0]  source_id;
+  reg [1:0]  dest_id;
+  reg        encdec;
+  reg [23:0] addr;
 `ifdef GL_TEST
   wire VPWR = 1'b1;
   wire VGND = 1'b0;
 `endif
 
   // Replace tt_um_example with your module name:
-  tt_um_example user_project (
-
-      // Include power ports for the Gate Level test:
-`ifdef GL_TEST
-      .VPWR(VPWR),
-      .VGND(VGND),
-`endif
-
-      .ui_in  (ui_in),    // Dedicated inputs
-      .uo_out (uo_out),   // Dedicated outputs
-      .uio_in (uio_in),   // IOs: Input path
-      .uio_out(uio_out),  // IOs: Output path
-      .uio_oe (uio_oe),   // IOs: Enable path (active high: 0=input, 1=output)
-      .ena    (ena),      // enable - goes high when design is selected
-      .clk    (clk),      // clock
-      .rst_n  (rst_n)     // not reset
+  sha sha(
+    .clk(clk),
+    .rst_n(rst_n),
+    .data_in(data_in),
+    .ready_in(ready_in),
+    .valid_in(valid_in),
+    .data_out(data_out),
+    .data_ready(data_ready),
+    .data_valid(data_valid),
+    .ack_ready(ack_ready),
+    .ack_valid(ack_valid),
+    .module_source_id(module_source_id),
+    .opcode(opcode),
+    .source_id(source_id),
+    .dest_id(dest_id),
+    .encdec(encdec),
+    .addr(addr)
   );
 
 endmodule
