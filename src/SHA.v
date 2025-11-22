@@ -62,6 +62,7 @@ module sha (
     msg_buffer_256b msg_buf (
         .clk       (clk),
         .rst_n     (rst_n),
+        .byte_cnt  (byte_cnt),
         .in_valid  (msg_in_valid),
         .in_ready  (msg_in_ready),
         .in_data   (msg_in_data),
@@ -186,7 +187,7 @@ module sha (
             byte_valid   <= 1'b0;
         end else begin
             // defaults
-            msg_in_valid    <= 1'b0;
+            //msg_in_valid    <= 1'b0;
             msg_in_last     <= 1'b0;
             msg_ready       <= 1'b0;
             ms_init         <= 1'b0;
@@ -199,7 +200,7 @@ module sha (
                 // ----------------------------------------------------------
                 // IDLE: accept commands (load text, hash, write result)
                 // ----------------------------------------------------------
-                    IDLE: begin
+                IDLE: begin
                     byte_cnt <= 6'd0;
 
                     // Start hash only if we have a loaded message

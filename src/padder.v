@@ -1,6 +1,7 @@
 module msg_buffer_256b (
   input  wire       clk,
   input  wire       rst_n,
+  input [5:0]       byte_cnt,
 
   // 32-byte message input
   input  wire       in_valid,
@@ -13,15 +14,12 @@ module msg_buffer_256b (
   output reg [255:0] msg_block   // 32 bytes, big-endian
 );
 
-  reg [4:0] byte_cnt;  // 0..31
   reg       collecting;
-
   assign in_ready = collecting;
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       collecting <= 1'b1;
-      byte_cnt   <= 5'd0;
       msg_valid  <= 1'b0;
       msg_block  <= 256'd0;
     end else begin
@@ -32,8 +30,6 @@ module msg_buffer_256b (
         if (byte_cnt == 5'd31) begin
           collecting <= 1'b0;
           msg_valid  <= 1'b1;
-        end else begin
-          byte_cnt <= byte_cnt + 5'd1;
         end
       end
 
@@ -41,7 +37,6 @@ module msg_buffer_256b (
         // ready for next message
         msg_valid <= 1'b0;
         collecting <= 1'b1;
-        byte_cnt   <= 5'd0;
         msg_block  <= 256'd0;
       end
     end
