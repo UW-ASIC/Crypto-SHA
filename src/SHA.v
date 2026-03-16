@@ -74,6 +74,16 @@ module sha (
   reg  [ 5:0] t_reg;
   wire [ 5:0] t = t_reg;
 
+  // t_reg and ms_shift are registered on the same clock edge, so
+  // message_schedule would see the NEW t when shift fires. We delay t
+  // by one cycle so the schedule always sees the round index that
+  // triggered the shift, not the incremented one.
+  reg  [ 5:0] t_ms;
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) t_ms <= 6'd0;
+    else        t_ms <= t_reg;
+  end
+
   wire [31:0] K_t;
 
   round_constants rc (
@@ -92,7 +102,7 @@ module sha (
       .rst_n    (rst_n),
       .init     (ms_init),
       .shift    (ms_shift),
-      .t        (t),
+      .t        (t_ms),      // delayed by one cycle to match shift timing
       .msg_block(msg_block),
       .W_t      (W_t),
       .valid    (W_valid)
