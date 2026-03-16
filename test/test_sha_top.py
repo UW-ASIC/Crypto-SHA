@@ -1,23 +1,24 @@
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge, with_timeout
-from cocotb.utils import get_sim_time
 from Crypto.Hash import SHA256
 from Crypto.Random import get_random_bytes
 
-# Match RTL
+# -----------------------------------------------------------------------
+# Opcodes (match RTL)
+# -----------------------------------------------------------------------
+OP_NOP          = 0  # 2'b00
 OP_LOAD_TEXT    = 1  # 2'b01
 OP_WRITE_RESULT = 2  # 2'b10
 OP_HASH         = 3  # 2'b11
 
-MEM_ID = 0  # 2'b00
-SHA_ID = 1  # 2'b01
-
-# SHA-256 takes 64 rounds x ~2 cycles + overhead; 300 cycles is a safe ceiling.
+# SHA-256 takes 64 rounds x ~3 cycles + overhead; 300 cycles is safe.
 HASH_TIMEOUT_CYCLES = 300
 
+# -----------------------------------------------------------------------
 # NIST FIPS 180-4 known-answer test vectors for exactly 32-byte messages.
 # Each entry: (plaintext_hex, expected_digest_hex)
+# -----------------------------------------------------------------------
 NIST_VECTORS = [
     # 32 bytes of zeros
     (
@@ -37,206 +38,212 @@ NIST_VECTORS = [
 ]
 
 
-async def reset_dut(dut):
-    """Reset the SHA DUT and initialize control signals."""
-    sha = dut
+# -----------------------------------------------------------------------
+# TT pin-level driver
+# -----------------------------------------------------------------------
+#
+#  ui_in[7:0]   -> data_in
+#  uio_in[0]    -> valid_in
+#  uio_in[1]    -> data_ready
+#  uio_in[2]    -> ack_ready
+#  uio_in[3]    -> opcode[0]
+#  uio_in[4]    -> opcode[1]
+#  uio_in[7:5]  -> unused (0)
+#
+#  uo_out[7:0]  <- data_out
+#  uio_out[5]   <- ready_in
+#  uio_out[6]   <- data_valid
+#  uio_out[7]   <- ack_valid
+# -----------------------------------------------------------------------
 
-    sha.rst_n.value      = 0
-    sha.valid_in.value   = 0
-    sha.data_in.value    = 0
-    sha.data_ready.value = 0
-    sha.ack_ready.value  = 0
+class TTDriver:
+    """Thin wrapper that maps logical SHA signals to TT physical pins."""
 
-    # Transaction bus defaults
-    sha.opcode.value     = 0
-    sha.source_id.value  = 0
-    sha.dest_id.value    = 0
-    sha.encdec.value     = 0   # unused for SHA
-    sha.addr.value       = 0
+    def __init__(self, dut):
+        self.dut = dut
+        self._uio = 0          # shadow register for uio_in
 
-    await ClockCycles(sha.clk, 5)
+    # ---- helpers for uio_in bit-fields ----
+    def _flush_uio(self):
+        self.dut.uio_in.value = self._uio
 
-    sha.rst_n.value      = 1
-    sha.ack_ready.value  = 0  # controlled by read_digest
+    def set_valid_in(self, v):
+        self._uio = (self._uio & ~0x01) | (int(v) & 1)
+        self._flush_uio()
 
-    await ClockCycles(sha.clk, 2)
-    sha._log.info("Reset complete")
+    def set_data_ready(self, v):
+        self._uio = (self._uio & ~0x02) | ((int(v) & 1) << 1)
+        self._flush_uio()
+
+    def set_ack_ready(self, v):
+        self._uio = (self._uio & ~0x04) | ((int(v) & 1) << 2)
+        self._flush_uio()
+
+    def set_opcode(self, op):
+        self._uio = (self._uio & ~0x18) | ((int(op) & 3) << 3)
+        self._flush_uio()
+
+    def set_data_in(self, v):
+        self.dut.ui_in.value = int(v) & 0xFF
+
+    # ---- output readers ----
+    def get_data_out(self):
+        return int(self.dut.uo_out.value) & 0xFF
+
+    def get_ready_in(self):
+        return (int(self.dut.uio_out.value) >> 5) & 1
+
+    def get_data_valid(self):
+        return (int(self.dut.uio_out.value) >> 6) & 1
+
+    def get_ack_valid(self):
+        return (int(self.dut.uio_out.value) >> 7) & 1
+
+    # ---- bulk set / clear ----
+    def clear_all(self):
+        """Drive all inputs low."""
+        self.dut.ui_in.value = 0
+        self._uio = 0
+        self._flush_uio()
 
 
-async def load_message_32(dut, msg: bytes):
-    """
-    Load exactly 32 bytes into the SHA core using LOAD_TEXT.
-    This matches the RD_TEXT state + msg_buffer_256b interface.
-    """
+# -----------------------------------------------------------------------
+# Testbench helpers
+# -----------------------------------------------------------------------
+
+async def reset_dut(dut, drv):
+    """Reset the DUT and initialise all TT input pins to 0."""
+    drv.clear_all()
+    dut.ena.value = 1
+
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+
+    dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 2)
+    dut._log.info("Reset complete")
+
+
+async def load_message_32(dut, drv, msg: bytes):
+    """Load exactly 32 bytes into the SHA core via LOAD_TEXT."""
     assert len(msg) == 32, "DUT expects exactly 32 bytes"
-    sha = dut
 
-    sha._log.info(f"Loading 32-byte message: {msg.hex()}")
+    dut._log.info(f"Loading 32-byte message: {msg.hex()}")
 
-    # Set up LOAD_TEXT transaction
-    sha.opcode.value    = OP_LOAD_TEXT
-    sha.source_id.value = MEM_ID
-    sha.dest_id.value   = SHA_ID
+    drv.set_opcode(OP_LOAD_TEXT)
 
     for b in msg:
-        sha.data_in.value  = b
-        sha.valid_in.value = 1
+        drv.set_data_in(b)
+        drv.set_valid_in(1)
 
-        # Wait until DUT asserts ready_in on a rising clock edge
+        # Wait until DUT asserts ready_in
         while True:
-            await RisingEdge(sha.clk)
-            if int(sha.ready_in.value) == 1:
+            await RisingEdge(dut.clk)
+            if drv.get_ready_in():
                 break
 
-    sha.valid_in.value = 0
-    sha._log.info("Finished sending 32-byte message")
+    drv.set_valid_in(0)
+    drv.set_opcode(OP_NOP)
+    dut._log.info("Finished sending 32-byte message")
 
-    # Give DUT a couple cycles to return from RD_TEXT to IDLE
-    await ClockCycles(sha.clk, 2)
+    # Give DUT a couple cycles to return to IDLE
+    await ClockCycles(dut.clk, 2)
 
 
-async def _wait_for_digest_ready(dut):
+async def start_hash(dut, drv):
+    """Issue OP_HASH and wait for completion."""
+    dut._log.info("Issuing OP_HASH")
+
+    drv.set_opcode(OP_HASH)
+    await ClockCycles(dut.clk, 2)
+
+    drv.set_opcode(OP_NOP)
+
+    # Wait for hash to complete.  SHA-256 = 64 rounds × ~3 cycles + overhead
+    # ≈ 200 cycles.  300 is a safe ceiling.  In RTL we could poll
+    # digest_ready, but in GL that internal signal is not accessible,
+    # so a fixed wait is the most portable approach.
+    dut._log.info(f"Waiting for hash (fixed wait = {HASH_TIMEOUT_CYCLES} cycles)")
+    await ClockCycles(dut.clk, HASH_TIMEOUT_CYCLES)
+    dut._log.info("Hash wait complete")
+
+
+async def read_digest(dut, drv, num_bytes=32) -> bytes:
     """
-    Internal coroutine: poll digest_ready until high.
-    Wrapped with with_timeout in start_hash so a hung DUT fails cleanly.
+    Request the digest via OP_WRITE_RESULT and clock out ``num_bytes``
+    using the data_valid / data_ready handshake.
     """
-    sha = dut
-    while True:
-        await RisingEdge(sha.clk)
-        # digest_ready is an internal reg; access via dut hierarchy.
-        # If your sim doesn't expose internals, fall back to a fixed wait.
-        try:
-            if int(sha.digest_ready.value) == 1:
-                return
-        except AttributeError:
-            # digest_ready not directly accessible; wait the full timeout
-            return
-
-
-async def start_hash(dut):
-    """
-    Issue OP_HASH to start hashing the loaded 32-byte message,
-    then wait for completion with a hard timeout so a stalled DUT
-    fails immediately rather than running forever.
-    """
-    sha = dut
-
-    sha._log.info("Issuing OP_HASH")
-
-    sha.opcode.value    = OP_HASH
-    sha.source_id.value = MEM_ID
-    sha.dest_id.value   = SHA_ID
-
-    # Hold OP_HASH for a couple of cycles so IDLE can see it
-    await ClockCycles(sha.clk, 2)
-
-    # Clear bus
-    sha.opcode.value    = 0
-    sha.source_id.value = 0
-    sha.dest_id.value   = 0
-
-    # Wait for hashing to complete, but enforce a hard cycle ceiling.
-    # HASH_TIMEOUT_CYCLES is well above the expected ~140-cycle latency.
-    sha._log.info(f"Waiting for hash (timeout = {HASH_TIMEOUT_CYCLES} cycles)")
-    try:
-        await with_timeout(
-            _wait_for_digest_ready(dut),
-            timeout_time=HASH_TIMEOUT_CYCLES * 10,  # 10 us per cycle
-            timeout_unit="us",
-        )
-        sha._log.info("digest_ready seen — hash complete")
-    except cocotb.result.SimTimeoutError:
-        raise AssertionError(
-            f"DUT did not complete hashing within {HASH_TIMEOUT_CYCLES} cycles"
-        )
-
-    # One extra cycle of margin before reading
-    await ClockCycles(sha.clk, 2)
-
-
-async def read_digest(dut, num_bytes=32) -> bytes:
-    """
-    Request the digest with OP_WRITE_RESULT and read `num_bytes` using
-    data_valid/data_ready handshake.
-
-    ack_ready is held LOW during digest collection so that ACK_HOLD does not
-    self-clear in the same cycle it is entered (the DUT exits ACK_HOLD the
-    first cycle it sees ack_ready=1, so with ack_ready permanently high the
-    pulse lasts only one cycle and is gone before the testbench can poll it).
-    We raise ack_ready only after the collection loop exits, then poll.
-    """
-    sha = dut
     digest = bytearray()
 
-    sha._log.info("Requesting digest via OP_WRITE_RESULT")
+    dut._log.info("Requesting digest via OP_WRITE_RESULT")
 
-    # Hold ack_ready LOW so ACK_HOLD will wait for us
-    sha.ack_ready.value  = 0
+    # Hold ack_ready LOW so ACK_HOLD waits for us
+    drv.set_ack_ready(0)
 
-    # Issue WRITE_RESULT transaction
-    sha.opcode.value    = OP_WRITE_RESULT
-    sha.source_id.value = SHA_ID
-    sha.dest_id.value   = MEM_ID
+    # Issue WRITE_RESULT
+    drv.set_opcode(OP_WRITE_RESULT)
+    drv.set_data_ready(1)
 
-    sha.data_ready.value = 1
-    sha._log.info("Waiting for digest bytes from DUT")
+    dut._log.info("Waiting for digest bytes from DUT")
 
-    while len(digest) < num_bytes:
-        await RisingEdge(sha.clk)
-        if int(sha.data_valid.value) == 1:
-            digest.append(int(sha.data_out.value))
+    timeout = 2000  # generous cycle ceiling
+    cycles = 0
+    while len(digest) < num_bytes and cycles < timeout:
+        await RisingEdge(dut.clk)
+        cycles += 1
+        if drv.get_data_valid():
+            digest.append(drv.get_data_out())
 
-    sha.data_ready.value = 0
-    sha._log.info(f"Received digest ({len(digest)} bytes)")
+    drv.set_data_ready(0)
+    assert len(digest) == num_bytes, (
+        f"Only received {len(digest)}/{num_bytes} digest bytes "
+        f"within {timeout} cycles"
+    )
+    dut._log.info(f"Received digest ({len(digest)} bytes)")
 
-    # Now raise ack_ready and wait for ack_valid. ACK_HOLD is still active
-    # because ack_ready was low during TX_RES → ACK_HOLD transition.
-    # Fail explicitly if it never arrives rather than silently continuing.
-    sha.ack_ready.value = 1
+    # Now raise ack_ready and wait for ack_valid
+    drv.set_ack_ready(1)
     ack_seen = False
     for _ in range(50):
-        await RisingEdge(sha.clk)
-        if int(sha.ack_valid.value) == 1:
-            sha._log.info(
-                f"Got ack_valid, module_source_id={int(sha.module_source_id.value)}"
-            )
+        await RisingEdge(dut.clk)
+        if drv.get_ack_valid():
+            dut._log.info("Got ack_valid")
             ack_seen = True
             break
 
     assert ack_seen, "DUT never asserted ack_valid after transmitting digest"
 
     # Clear bus
-    sha.opcode.value    = 0
-    sha.source_id.value = 0
-    sha.dest_id.value   = 0
+    drv.set_opcode(OP_NOP)
+    drv.set_ack_ready(0)
 
     return bytes(digest)
 
 
-async def _run_one_hash(dut, msg: bytes) -> bytes:
-    """Load a message, hash it, and return the digest. Reusable across tests."""
-    await load_message_32(dut, msg)
-    await start_hash(dut)
-    return await read_digest(dut, num_bytes=32)
+async def _run_one_hash(dut, drv, msg: bytes) -> bytes:
+    """Load a message, hash it, and return the digest."""
+    await load_message_32(dut, drv, msg)
+    await start_hash(dut, drv)
+    return await read_digest(dut, drv, num_bytes=32)
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Test 1: Fixed NIST known-answer vectors
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 @cocotb.test()
 async def test_sha_nist_vectors(dut):
     """
     Known-answer tests using fixed NIST-style vectors for 32-byte messages.
-    These are deterministic and must always pass — a failure here means a
-    fundamental correctness bug, not a flaky random failure.
     """
     dut._log.info("Starting NIST known-answer vector tests")
 
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
+    drv = TTDriver(dut)
+
     await ClockCycles(dut.clk, 5)
-    await reset_dut(dut)
+    await reset_dut(dut, drv)
 
     for i, (msg_hex, expected_hex) in enumerate(NIST_VECTORS):
         msg      = bytes.fromhex(msg_hex)
@@ -244,7 +251,7 @@ async def test_sha_nist_vectors(dut):
 
         dut._log.info(f"Vector {i}: {msg_hex}")
 
-        hw_digest = await _run_one_hash(dut, msg)
+        hw_digest = await _run_one_hash(dut, drv, msg)
 
         assert hw_digest == expected, (
             f"NIST vector {i} mismatch\n"
@@ -257,26 +264,27 @@ async def test_sha_nist_vectors(dut):
     dut._log.info("All NIST vectors passed")
 
 
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 # Test 2: Random 256-bit message
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------
 @cocotb.test()
 async def test_sha_random_256bit(dut):
     """
     Random 256-bit (32-byte) message test: compare DUT against Python SHA-256.
-    DUT logic only supports fixed 256-bit messages.
     """
     dut._log.info("Starting SHA-256 random 256-bit message test")
 
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
+    drv = TTDriver(dut)
+
     await ClockCycles(dut.clk, 5)
-    await reset_dut(dut)
+    await reset_dut(dut, drv)
 
     msg = get_random_bytes(32)
 
-    hw_digest  = await _run_one_hash(dut, msg)
+    hw_digest  = await _run_one_hash(dut, drv, msg)
     ref_digest = SHA256.new(msg).digest()
 
     dut._log.info(f"Random msg : {msg.hex()}")
@@ -290,28 +298,26 @@ async def test_sha_random_256bit(dut):
     )
 
 
-# ---------------------------------------------------------------------------
-# Test 3: Back-to-back hashes — verifies state resets cleanly between messages
-# ---------------------------------------------------------------------------
+# -----------------------------------------------------------------------
+# Test 3: Back-to-back hashes
+# -----------------------------------------------------------------------
 @cocotb.test()
 async def test_sha_back_to_back(dut):
     """
     Hash two different messages consecutively without resetting the DUT.
-    Verifies that internal state (working variables, digest, msg_buffer) is
-    correctly cleared between operations and does not bleed across hashes.
     """
     dut._log.info("Starting back-to-back hash test")
 
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
+    drv = TTDriver(dut)
+
     await ClockCycles(dut.clk, 5)
-    await reset_dut(dut)
+    await reset_dut(dut, drv)
 
     msg_a = get_random_bytes(32)
     msg_b = get_random_bytes(32)
-
-    # Ensure the two messages are actually different
     while msg_b == msg_a:
         msg_b = get_random_bytes(32)
 
@@ -319,7 +325,7 @@ async def test_sha_back_to_back(dut):
     ref_b = SHA256.new(msg_b).digest()
 
     dut._log.info(f"Message A: {msg_a.hex()}")
-    hw_a = await _run_one_hash(dut, msg_a)
+    hw_a = await _run_one_hash(dut, drv, msg_a)
     assert hw_a == ref_a, (
         "Back-to-back test: first hash mismatch\n"
         f"  expected: {ref_a.hex()}\n"
@@ -328,7 +334,7 @@ async def test_sha_back_to_back(dut):
     dut._log.info("First hash correct, proceeding to second")
 
     dut._log.info(f"Message B: {msg_b.hex()}")
-    hw_b = await _run_one_hash(dut, msg_b)
+    hw_b = await _run_one_hash(dut, drv, msg_b)
     assert hw_b == ref_b, (
         "Back-to-back test: second hash mismatch\n"
         f"  expected: {ref_b.hex()}\n"

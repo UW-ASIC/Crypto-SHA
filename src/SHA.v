@@ -23,11 +23,6 @@ module sha (
     input wire [23:0] addr        // unused
 );
 
-  // VCD dump (sim only)
-  initial begin
-    $dumpfile("sha.vcd");
-    $dumpvars(0, sha);
-  end
 
   localparam [1:0] OP_LOAD_KEY = 2'b00;  // unused
   localparam [1:0] OP_LOAD_TEXT = 2'b01;
