@@ -69,16 +69,6 @@ module sha (
   reg  [ 5:0] t_reg;
   wire [ 5:0] t = t_reg;
 
-  // t_reg and ms_shift are registered on the same clock edge, so
-  // message_schedule would see the NEW t when shift fires. We delay t
-  // by one cycle so the schedule always sees the round index that
-  // triggered the shift, not the incremented one.
-  reg  [ 5:0] t_ms;
-  always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) t_ms <= 6'd0;
-    else        t_ms <= t_reg;
-  end
-
   wire [31:0] K_t;
 
   round_constants rc (
@@ -87,6 +77,8 @@ module sha (
   );
 
   // Message schedule: takes the 8 words directly (no 512-bit block)
+  // W_t and W_valid are now combinational in message_schedule,
+  // driven directly from t_reg so they align with K_t.
   reg         ms_init;
   reg         ms_shift;
   wire [31:0] W_t;
@@ -97,7 +89,7 @@ module sha (
       .rst_n    (rst_n),
       .init     (ms_init),
       .shift    (ms_shift),
-      .t        (t_ms),      // delayed by one cycle to match shift timing
+      .t        (t),         // undelayed — W_t is now combinational
       .msg_block(msg_block),
       .W_t      (W_t),
       .valid    (W_valid)

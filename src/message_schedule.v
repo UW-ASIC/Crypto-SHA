@@ -4,17 +4,16 @@ module message_schedule(
 
   // Control
   input  wire         init,     // Pulse to load W[0..15] from block
-  input  wire         shift,    // For t>=15: compute W[t+1] and slide window
-  input  wire [5:0]   t,        // Current round index (0..63)
+  input  wire         shift,    // For t>=16: compute next W and slide window
+  input  wire [5:0]   t,        // Current round index (0..63) — undelayed t_reg
 
   // Data
-  input  wire [255:0] msg_block,  // 8×32-bit message, big-endian
-  output reg  [31:0]  W_t,      // Word for current round t
-  output reg          valid     // High when W_t is meaningful (after init)
+  input  wire [255:0] msg_block,  // 8x32-bit message, big-endian
+  output wire [31:0]  W_t,      // Word for current round t (combinational)
+  output wire         valid     // High when W_t is meaningful (after init)
 );
 
   // 16-word sliding window
-  // For t >= 15, invariant: W_window[i] = W[t-15+i]
   reg [31:0] W_window [0:15];
 
   // Flag that we've done init and window holds valid data
@@ -23,14 +22,7 @@ module message_schedule(
   integer i;
 
   // --------------------------------------------------------
-  // σ0, σ1 computation for message schedule
-  // Using the "look-ahead" formula for W[t+1]:
-  //   W[t+1] = σ1(W[t-1]) + W[t-6] + σ0(W[t-14]) + W[t-15]
-  // which maps to W_window indices:
-  //   W[t-15] -> W_window[0]
-  //   W[t-14] -> W_window[1]
-  //   W[t-6]  -> W_window[9]
-  //   W[t-1]  -> W_window[14]
+  // sigma0, sigma1 for message schedule expansion
   // --------------------------------------------------------
 
     function automatic [31:0] rotr(input [31:0] x, input integer n);
@@ -48,61 +40,56 @@ module message_schedule(
     wire [31:0] s0 = sigma0(W_window[1]);
     wire [31:0] s1 = sigma1(W_window[14]);
 
-
-  // Next word to append at tail: W[t+1]
+  // Next word to append at tail
   wire [31:0] W_next = s1 + W_window[9] + s0 + W_window[0];
 
   // --------------------------------------------------------
-  // Combinational "next" values for W_t and valid
+  // Combinational outputs — W_t and valid are wires so they
+  // track t_reg on the same cycle as K_t (also combinational).
+  // This eliminates the pipeline skew that caused W[t-1] to
+  // be paired with K[t].
   // --------------------------------------------------------
 
   reg  [3:0]  read_idx;
-  reg  [31:0] W_t_next;
-  reg         valid_next;
+  reg  [31:0] W_t_comb;
+  reg         valid_comb;
 
   always @(*) begin
     if (!initialized) begin
-      // Not initialized yet: no valid output
       read_idx   = 4'd0;
-      W_t_next   = 32'b0;
-      valid_next = 1'b0;
+      W_t_comb   = 32'b0;
+      valid_comb = 1'b0;
     end else begin
-      // Once initialized, window holds W[0..15] at first.
-      // For t < 16, W_t = W[t] = W_window[t]
-      // For t >= 16, W_t = W[t] = W_window[15] (tail of sliding window)
       if (t < 16)
         read_idx = t[3:0];
       else
         read_idx = 4'd15;
 
-      W_t_next   = W_window[read_idx];
-      valid_next = 1'b1;  // Window initialized ⇒ W_t is meaningful for any 0..63
+      W_t_comb   = W_window[read_idx];
+      valid_comb = 1'b1;
     end
   end
 
+  assign W_t  = W_t_comb;
+  assign valid = valid_comb;
+
   // --------------------------------------------------------
-  // Sequential state updates:
-  //   - Load initial window from block on init
-  //   - Slide window + append W_next when shift asserted for t >= 15
-  //   - Register W_t and valid (so they line up cleanly with t)
+  // Sequential: load window on init, slide on shift.
+  //
+  // t is now undelayed t_reg.  When SHA.v sets ms_shift on
+  // the same edge that t_reg increments from N to N+1,
+  // message_schedule sees t=N+1 on the next posedge.
+  // Shift condition adjusted accordingly: (t >= 16) && (t <= 63).
   // --------------------------------------------------------
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       initialized <= 1'b0;
-      W_t         <= 32'b0;
-      valid       <= 1'b0;
-
       for (i = 0; i < 16; i = i + 1)
         W_window[i] <= 32'b0;
 
     end else begin
-      // Register outputs *before* mutating the window
-      W_t   <= W_t_next;
-      valid <= valid_next;
-
-      // Load initial W[0..15] from the 512-bit block
-    if (init) begin
+      if (init) begin
         // W[0..7] from 256-bit message block
         W_window[0] <= msg_block[255:224];
         W_window[1] <= msg_block[223:192];
@@ -113,7 +100,7 @@ module message_schedule(
         W_window[6] <= msg_block[63:32];
         W_window[7] <= msg_block[31:0];
 
-        // Fixed padding for a 256-bit message
+        // Fixed SHA-256 padding for a 256-bit (32-byte) message
         W_window[8]  <= 32'h8000_0000;
         W_window[9]  <= 32'h0000_0000;
         W_window[10] <= 32'h0000_0000;
@@ -121,20 +108,14 @@ module message_schedule(
         W_window[12] <= 32'h0000_0000;
         W_window[13] <= 32'h0000_0000;
         W_window[14] <= 32'h0000_0000;
-        W_window[15] <= 32'h0000_0100; // 256 bits
+        W_window[15] <= 32'h0000_0100; // length = 256 bits
 
         initialized <= 1'b1;
-      end else if (initialized && shift && (t >= 6'd15) && (t < 6'd63)) begin
-        // Ignore shift before init.
-        // First shift at t = 15 generates W[16] for t = 16.
-        // Stop at t = 62 so we generate up to W[63] (t+1 = 63).
 
-        // Slide window left: drop oldest word, shift others up
-        for (i = 0; i < 15; i = i + 1) begin
+      end else if (initialized && shift && (t >= 6'd16) && (t <= 6'd63)) begin
+        // Slide window left, append W_next at tail
+        for (i = 0; i < 15; i = i + 1)
           W_window[i] <= W_window[i+1];
-        end
-
-        // Append newly computed W[t+1] at the tail
         W_window[15] <= W_next;
       end
     end
