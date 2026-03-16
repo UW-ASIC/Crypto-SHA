@@ -56,9 +56,47 @@ module tb ();
 `ifdef GL_TEST
   wire VPWR = 1'b1;
   wire VGND = 1'b0;
-`endif
 
-  // Replace tt_um_example with your module name:
+  // In gate-level simulation the netlist top is tt_um_example.
+  // The SHA bus signals are packed into the TinyTapeout ui/uo/uio ports:
+  //   ui[7:0]  = data_in[7:0]
+  //   uo[7:0]  = data_out[7:0]
+  //   uio[0]   = opcode[0]
+  //   uio[1]   = opcode[1]
+  //   uio[2]   = source_id[0]
+  //   uio[3]   = source_id[1]
+  //   uio[4]   = dest_id[0]
+  //   uio[5]   = dest_id[1]
+  //   uio[6]   = valid_in (input) / data_valid (output)
+  //   uio[7]   = ready_in (input) / data_ready (input)
+  // Additional control signals are not exposed through the TT wrapper,
+  // so gate-level test coverage is limited to the wrapper I/O.
+  wire [7:0] uio_out;
+  wire [7:0] uio_oe;
+  wire [7:0] uio_in;
+  assign uio_in[1:0] = opcode;
+  assign uio_in[3:2] = source_id;
+  assign uio_in[5:4] = dest_id;
+  assign uio_in[6]   = valid_in;
+  assign uio_in[7]   = data_ready;
+  assign data_valid  = uio_out[6];
+  assign ready_in    = uio_out[7];
+
+  tt_um_example dut (
+    .clk     (clk),
+    .rst_n   (rst_n),
+    .ena     (1'b1),
+    .ui_in   (data_in),
+    .uo_out  (data_out),
+    .uio_in  (uio_in),
+    .uio_out (uio_out),
+    .uio_oe  (uio_oe),
+    .VPWR    (VPWR),
+    .VGND    (VGND)
+  );
+
+`else
+
   sha sha(
     .clk(clk),
     .rst_n(rst_n),
@@ -77,5 +115,7 @@ module tb ();
     .encdec(encdec),
     .addr(addr)
   );
+
+`endif
 
 endmodule
