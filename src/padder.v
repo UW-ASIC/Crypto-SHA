@@ -27,7 +27,7 @@ module msg_buffer_256b (
         // Big-endian: first byte -> bits [255:248], second -> [247:240], ...
         msg_block[255 - 8*byte_cnt -: 8] <= in_data;
 
-        if (byte_cnt == 5'd31) begin
+        if (byte_cnt == 6'd31) begin
           collecting <= 1'b0;
           msg_valid  <= 1'b1;
         end
