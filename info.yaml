@@ -6,7 +6,7 @@ project:
   description:  "A hardware SHA-256 hash engine for fixed 256-bit (32-byte) messages, with a byte-serial bus interface."
   language:     "Verilog"
   clock_hz:     50000000  # 50 MHz (20ns period as set in config.json)
-  tiles: "1x1"
+  tiles: "2x4"
   top_module:  "tt_um_example"
   source_files:
     - "SHA.v"
