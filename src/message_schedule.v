@@ -65,7 +65,16 @@ module message_schedule(
       else
         read_idx = 4'd15;
 
-      W_t_comb   = W_window[read_idx];
+      // Write-through bypass: when a shift is happening on this same
+      // cycle and we would read W_window[15], use the freshly-computed
+      // W_next instead.  This is needed because the round module's
+      // COMP phase can overlap with the window shift — the round would
+      // otherwise see the stale (pre-shift) value at position 15.
+      if (shift && initialized && (t >= 6'd16))
+        W_t_comb = W_next;
+      else
+        W_t_comb = W_window[read_idx];
+
       valid_comb = 1'b1;
     end
   end
