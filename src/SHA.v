@@ -211,7 +211,7 @@ module sha (
       byte_valid     <= 1'b0;
     end else begin
       // defaults
-      //msg_in_valid    <= 1'b0;
+      msg_in_valid   <= 1'b0;
       msg_in_last    <= 1'b0;
       msg_ready      <= 1'b0;
       ms_init        <= 1'b0;
