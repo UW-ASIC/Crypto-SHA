@@ -57,7 +57,7 @@ async def reset_dut(dut):
     await ClockCycles(sha.clk, 5)
 
     sha.rst_n.value      = 1
-    sha.ack_ready.value  = 1  # always ready to accept acks
+    sha.ack_ready.value  = 0  # controlled by read_digest
 
     await ClockCycles(sha.clk, 2)
     sha._log.info("Reset complete")
@@ -158,11 +158,20 @@ async def read_digest(dut, num_bytes=32) -> bytes:
     """
     Request the digest with OP_WRITE_RESULT and read `num_bytes` using
     data_valid/data_ready handshake.
+
+    ack_ready is held LOW during digest collection so that ACK_HOLD does not
+    self-clear in the same cycle it is entered (the DUT exits ACK_HOLD the
+    first cycle it sees ack_ready=1, so with ack_ready permanently high the
+    pulse lasts only one cycle and is gone before the testbench can poll it).
+    We raise ack_ready only after the collection loop exits, then poll.
     """
     sha = dut
     digest = bytearray()
 
     sha._log.info("Requesting digest via OP_WRITE_RESULT")
+
+    # Hold ack_ready LOW so ACK_HOLD will wait for us
+    sha.ack_ready.value  = 0
 
     # Issue WRITE_RESULT transaction
     sha.opcode.value    = OP_WRITE_RESULT
@@ -180,8 +189,10 @@ async def read_digest(dut, num_bytes=32) -> bytes:
     sha.data_ready.value = 0
     sha._log.info(f"Received digest ({len(digest)} bytes)")
 
-    # After TX_RES, DUT enters ACK_HOLD and asserts ack_valid.
+    # Now raise ack_ready and wait for ack_valid. ACK_HOLD is still active
+    # because ack_ready was low during TX_RES → ACK_HOLD transition.
     # Fail explicitly if it never arrives rather than silently continuing.
+    sha.ack_ready.value = 1
     ack_seen = False
     for _ in range(50):
         await RisingEdge(sha.clk)
