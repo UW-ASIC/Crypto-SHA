@@ -9,10 +9,12 @@ project:
   tiles: "1x1"
   top_module:  "tt_um_example"
   source_files:
+    - "SHA.v"
     - "padder.v"
-    - "project.v"
-    - "sha256_funcs.v"
+    - "message_schedule.v"
+    - "round_constants.v"
     - "round.v"
+    - "project.v"
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 pinout:
   # Inputs
