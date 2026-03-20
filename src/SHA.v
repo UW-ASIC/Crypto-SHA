@@ -335,6 +335,7 @@ module sha (
               // tell msg_buffer we’re done with the current message
               msg_ready       <= 1'b1;
             end
+            default: sha_state <= SHA_IDLE;
           endcase
         end
 

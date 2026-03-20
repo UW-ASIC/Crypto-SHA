@@ -121,7 +121,7 @@ module message_schedule(
 
         initialized <= 1'b1;
 
-      end else if (initialized && shift && (t >= 6'd16) && (t <= 6'd63)) begin
+      end else if (initialized && shift && (t >= 6'd16)) begin
         // Slide window left, append W_next at tail
         for (i = 0; i < 15; i = i + 1)
           W_window[i] <= W_window[i+1];
