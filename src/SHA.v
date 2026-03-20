@@ -358,7 +358,8 @@ module sha (
         // ----------------------------------------------------------
         ACK_HOLD: begin
           if (ack_ready) begin
-            cState <= IDLE;
+            digest_ready <= 1'b0;
+            cState       <= IDLE;
           end
         end
 
