@@ -40,10 +40,11 @@ jobs:
   viewer:
     needs: gds
     runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       pages: write
       id-token: write
     steps:
       - uses: TinyTapeout/tt-gds-action/viewer@ttsky25b
-        with:
-          artifact_name: tt-gds-viewer
