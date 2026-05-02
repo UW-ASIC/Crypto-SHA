@@ -138,8 +138,28 @@ module sha (
   );
 
   // Internal digest
-  reg [255:0] digest;
+  // reg [255:0] digest;
   reg         digest_ready;
+  reg [31:0]  word_out;
+
+  reg [31:0] state_word;
+  reg [31:0] iv_word;
+
+  reg [2:0] word_sel;
+
+  always @(*) begin
+      word_sel = byte_cnt[1:0] == 2'b11 ? byte_cnt[4:2] + 1 : byte_cnt[4:2];
+      case (word_sel)
+          3'd0: begin state_word = a_r; iv_word = 32'h6a09e667; end
+          3'd1: begin state_word = b_r; iv_word = 32'hbb67ae85; end
+          3'd2: begin state_word = c_r; iv_word = 32'h3c6ef372; end
+          3'd3: begin state_word = d_r; iv_word = 32'ha54ff53a; end
+          3'd4: begin state_word = e_r; iv_word = 32'h510e527f; end
+          3'd5: begin state_word = f_r; iv_word = 32'h9b05688c; end
+          3'd6: begin state_word = g_r; iv_word = 32'h1f83d9ab; end
+          3'd7: begin state_word = h_r; iv_word = 32'h5be0cd19; end
+      endcase
+  end
 
   // SHA internal FSM (within HASH_OP)
   localparam SHA_IDLE = 3'd0, 
@@ -190,7 +210,8 @@ module sha (
       g_r            <= 32'd0;
       h_r            <= 32'd0;
 
-      digest         <= 256'd0;
+      // digest         <= 256'd0;
+      word_out       <= 32'd0;
       digest_ready   <= 1'b0;
       sha_state      <= SHA_IDLE;
 
@@ -313,20 +334,21 @@ module sha (
                 end else begin
                   // finished t = 63
                   sha_state <= SHA_DONE;
+                  byte_cnt <= 6'b0;
                 end
               end
             end
 
             SHA_DONE: begin
-              // Finalize digest = IV + working vars
-              digest[255:224] <= 32'h6a09e667 + a_r;
-              digest[223:192] <= 32'hbb67ae85 + b_r;
-              digest[191:160] <= 32'h3c6ef372 + c_r;
-              digest[159:128] <= 32'ha54ff53a + d_r;
-              digest[127:96]  <= 32'h510e527f + e_r;
-              digest[95:64]   <= 32'h9b05688c + f_r;
-              digest[63:32]   <= 32'h1f83d9ab + g_r;
-              digest[31:0]    <= 32'h5be0cd19 + h_r;
+              // Finalize digest = IV + working vars, compute later
+              // digest[255:224] <= 32'h6a09e667 + a_r;
+              // digest[223:192] <= 32'hbb67ae85 + b_r;
+              // digest[191:160] <= 32'h3c6ef372 + c_r;
+              // digest[159:128] <= 32'ha54ff53a + d_r;
+              // digest[127:96]  <= 32'h510e527f + e_r;
+              // digest[95:64]   <= 32'h9b05688c + f_r;
+              // digest[63:32]   <= 32'h1f83d9ab + g_r;
+              // digest[31:0]    <= 32'h5be0cd19 + h_r;
 
               digest_ready    <= 1'b1;
               sha_state       <= SHA_IDLE;
@@ -345,7 +367,8 @@ module sha (
         TX_RES: begin
           if (data_ready) begin
             byte_valid <= 1'b1;
-            byte_out   <= digest[255-byte_cnt*8-:8];
+            // byte_out   <= digest[255-byte_cnt*8-:8];
+            byte_out   <= word_out[31-byte_cnt[1:0]*8-:8];
             byte_cnt   <= byte_cnt + 1'b1;
 
             if (byte_cnt == 6'd31) begin
@@ -366,6 +389,11 @@ module sha (
 
         default: cState <= IDLE;
       endcase
+
+      if (sha_state == SHA_DONE || ((cState == TX_RES) && (byte_cnt[1:0] == 2'b11))) begin
+        word_out <= state_word + iv_word;
+      end
+
     end
   end
 
